@@ -28,12 +28,45 @@ class _SplashScreen extends StatelessWidget {
   }
 }
 
+// Shell with bottom navigation bar for main app screens
+class _AppShell extends StatelessWidget {
+  final Widget child;
+  const _AppShell({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final location = GoRouterState.of(context).matchedLocation;
+
+    return Scaffold(
+      body: child,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: location == '/my-bookings' ? 1 : 0,
+        onDestinationSelected: (index) {
+          if (index == 0) context.go('/slots');
+          if (index == 1) context.go('/my-bookings');
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.calendar_view_week_outlined),
+            selectedIcon: Icon(Icons.calendar_view_week),
+            label: 'Slots',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.local_laundry_service_outlined),
+            selectedIcon: Icon(Icons.local_laundry_service),
+            label: 'My Bookings',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
 
   return GoRouter(
     initialLocation: '/login',
-    // Refresh router whenever auth state changes
     refreshListenable: _AuthStateListenable(ref),
     redirect: (context, state) {
       final isLoading = authState.isLoading;
@@ -41,37 +74,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isOnAuthPage =
           state.matchedLocation == '/login' || state.matchedLocation == '/register';
 
-      // Still initializing — show splash
       if (isLoading) return '/splash';
-
-      // Not logged in and not on an auth page → redirect to login
       if (!isAuthenticated && !isOnAuthPage) return '/login';
-
-      // Logged in and on an auth page → redirect to slots
       if (isAuthenticated && isOnAuthPage) return '/slots';
 
-      return null; // No redirect needed
+      return null;
     },
     routes: [
-      GoRoute(
-        path: '/splash',
-        builder: (ctx, state) => const _SplashScreen(),
-      ),
-      GoRoute(
-        path: '/login',
-        builder: (ctx, state) => const LoginScreen(),
-      ),
-      GoRoute(
-        path: '/register',
-        builder: (ctx, state) => const RegisterScreen(),
-      ),
-      GoRoute(
-        path: '/slots',
-        builder: (ctx, state) => const SlotsScreen(),
-      ),
-      GoRoute(
-        path: '/my-bookings',
-        builder: (ctx, state) => const MyBookingsScreen(),
+      GoRoute(path: '/splash', builder: (ctx, state) => const _SplashScreen()),
+      GoRoute(path: '/login', builder: (ctx, state) => const LoginScreen()),
+      GoRoute(path: '/register', builder: (ctx, state) => const RegisterScreen()),
+      // Shell route wraps the main app screens with bottom nav
+      ShellRoute(
+        builder: (ctx, state, child) => _AppShell(child: child),
+        routes: [
+          GoRoute(path: '/slots', builder: (ctx, state) => const SlotsScreen()),
+          GoRoute(path: '/my-bookings', builder: (ctx, state) => const MyBookingsScreen()),
+        ],
       ),
     ],
   );

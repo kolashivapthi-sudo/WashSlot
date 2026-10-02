@@ -7,6 +7,7 @@ import '../../machines/models/machine.dart';
 import '../providers/slots_provider.dart';
 import '../widgets/slot_grid.dart';
 import '../models/slot.dart';
+import '../../bookings/providers/bookings_provider.dart';
 
 class SlotsScreen extends ConsumerStatefulWidget {
   const SlotsScreen({super.key});
@@ -341,20 +342,44 @@ class _SlotsScreenState extends ConsumerState<SlotsScreen>
   void _confirmBook(BuildContext context, Slot slot, Machine machine) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => _BookConfirmSheet(
         slot: slot,
         machine: machine,
-        onConfirm: () {
+        onConfirm: () async {
           Navigator.pop(ctx);
-          // Booking action is handled in Phase 6
-          // Optimistic update — mark slot as booked immediately
-          ref.read(slotsProvider.notifier).updateSlotStatus(
-                slot.id,
-                SlotStatus.booked,
-              );
+
+          // Optimistic UI update — slot appears booked instantly
+          ref.read(slotsProvider.notifier).updateSlotStatus(slot.id, SlotStatus.booked);
+
+          // Call API
+          final success = await ref.read(bookingsProvider.notifier).book(slot.id);
+
+          if (!success && mounted) {
+            // Revert optimistic update on failure
+            ref.read(slotsProvider.notifier).updateSlotStatus(slot.id, SlotStatus.available);
+
+            final err = ref.read(bookingsProvider).actionError ?? 'Booking failed.';
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(err),
+                backgroundColor: Theme.of(context).colorScheme.error,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          } else if (success && mounted) {
+            final msg = ref.read(bookingsProvider).successMessage ?? 'Slot booked!';
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(msg),
+                backgroundColor: const Color(0xFF2D6A4F),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
         },
       ),
     );
@@ -436,10 +461,10 @@ class _RepairBanner extends StatelessWidget {
 
 // ─── Book Confirm Bottom Sheet ────────────────────────────────────────────────
 
-class _BookConfirmSheet extends StatelessWidget {
+class _BookConfirmSheet extends ConsumerWidget {
   final Slot slot;
   final Machine machine;
-  final VoidCallback onConfirm;
+  final Future<void> Function() onConfirm;
 
   const _BookConfirmSheet({
     required this.slot,
@@ -448,11 +473,12 @@ class _BookConfirmSheet extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isActing = ref.watch(bookingsProvider).isActing;
     final colors = Theme.of(context).colorScheme;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
+      padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(context).viewInsets.bottom + 36),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -502,11 +528,17 @@ class _BookConfirmSheet extends StatelessWidget {
             width: double.infinity,
             height: 50,
             child: FilledButton(
-              onPressed: onConfirm,
+              onPressed: isActing ? null : () => onConfirm(),
               style: FilledButton.styleFrom(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Book This Slot', style: TextStyle(fontSize: 16)),
+              child: isActing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Book This Slot', style: TextStyle(fontSize: 16)),
             ),
           ),
           const SizedBox(height: 10),
@@ -514,7 +546,7 @@ class _BookConfirmSheet extends StatelessWidget {
             width: double.infinity,
             height: 44,
             child: TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: isActing ? null : () => Navigator.pop(context),
               child: const Text('Cancel'),
             ),
           ),
