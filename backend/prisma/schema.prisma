@@ -1,0 +1,197 @@
+// WashSlot Prisma Schema
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum Role {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum MachineStatus {
+  AVAILABLE
+  IN_USE
+  UNDER_REPAIR
+}
+
+enum SlotStatus {
+  AVAILABLE
+  BOOKED
+  BLOCKED     // admin blocked
+  COMPLETED
+  NO_SHOW
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum DayType {
+  ALL
+  WEEKDAY     // Mon–Fri
+  WEEKEND     // Sat–Sun
+  SUNDAY
+  HOLIDAY
+  SPECIFIC    // specific date
+}
+
+// ─────────────────────────────────────────────
+// USER
+// ─────────────────────────────────────────────
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String
+  name              String
+  role              Role      @default(USER)
+  fcmToken          String?   // Firebase push notification token
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  bookings          Booking[]
+  noShowCount       Int       @default(0)
+
+  @@index([email])
+}
+
+// ─────────────────────────────────────────────
+// WASHING MACHINE
+// ─────────────────────────────────────────────
+
+model Machine {
+  id          String        @id @default(uuid())
+  name        String        // e.g. "Machine 1", "Machine 2"
+  description String?
+  status      MachineStatus @default(AVAILABLE)
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  slots       Slot[]
+}
+
+// ─────────────────────────────────────────────
+// SLOT SCHEDULE CONFIG
+// Admin sets operating hours + duration per schedule
+// ─────────────────────────────────────────────
+
+model SlotSchedule {
+  id              String    @id @default(uuid())
+  openTime        String    // "06:00" 24hr format
+  closeTime       String    // "22:00" 24hr format
+  slotDuration    Int       @default(30)   // minutes
+  bufferDuration  Int       @default(10)   // minutes between slots
+  dayType         DayType   @default(ALL)
+  specificDate    DateTime? // only used when dayType = SPECIFIC or HOLIDAY
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  createdBy       String    // admin user id
+}
+
+// ─────────────────────────────────────────────
+// BLOCKED TIME RANGE
+// Admin manually blocks a range of time
+// ─────────────────────────────────────────────
+
+model BlockedRange {
+  id            String    @id @default(uuid())
+  startTime     DateTime
+  endTime       DateTime
+  reason        String?
+  dayType       DayType   @default(SPECIFIC)
+  createdAt     DateTime  @default(now())
+  createdBy     String    // admin user id
+}
+
+// ─────────────────────────────────────────────
+// SLOT
+// Auto-generated from SlotSchedule
+// ─────────────────────────────────────────────
+
+model Slot {
+  id          String      @id @default(uuid())
+  machineId   String
+  machine     Machine     @relation(fields: [machineId], references: [id])
+  startTime   DateTime
+  endTime     DateTime
+  status      SlotStatus  @default(AVAILABLE)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  booking     Booking?
+
+  @@unique([machineId, startTime])
+  @@index([machineId, startTime])
+  @@index([startTime])
+}
+
+// ─────────────────────────────────────────────
+// BOOKING
+// ─────────────────────────────────────────────
+
+model Booking {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  slotId          String        @unique
+  slot            Slot          @relation(fields: [slotId], references: [id])
+  status          BookingStatus @default(CONFIRMED)
+  bookedAt        DateTime      @default(now())
+  cancelledAt     DateTime?
+  completedAt     DateTime?
+  noShowAt        DateTime?
+  // tracks against weekly frequency — even cancellations count
+  countsAgainstLimit Boolean    @default(true)
+
+  @@index([userId])
+  @@index([slotId])
+}
+
+// ─────────────────────────────────────────────
+// WASH HISTORY LOG
+// Immutable log of every booking outcome
+// ─────────────────────────────────────────────
+
+model WashHistory {
+  id            String        @id @default(uuid())
+  userId        String
+  machineId     String
+  slotId        String
+  startTime     DateTime
+  endTime       DateTime
+  status        BookingStatus
+  createdAt     DateTime      @default(now())
+
+  @@index([userId, createdAt])
+  @@index([machineId, createdAt])
+}
+
+// ─────────────────────────────────────────────
+// APP CONFIG
+// Admin-configurable global settings
+// ─────────────────────────────────────────────
+
+model AppConfig {
+  id                  String  @id @default(uuid())
+  weeklyBookingLimit  Int     @default(3)   // max bookings per rolling 7-day window
+  updatedAt           DateTime @updatedAt
+  updatedBy           String  // admin user id
+}

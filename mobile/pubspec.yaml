@@ -1,0 +1,50 @@
+name: washslot
+description: Slot booking system for hostel washing machines
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP & API
+  dio: ^5.4.1
+  retrofit: ^4.1.0
+
+  # State management
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.4
+
+  # Navigation
+  go_router: ^13.2.0
+
+  # Storage (JWT token)
+  flutter_secure_storage: ^9.0.0
+
+  # Push Notifications
+  firebase_core: ^2.27.0
+  firebase_messaging: ^14.7.19
+
+  # Local notifications (T-5 alarm)
+  flutter_local_notifications: ^17.0.0
+
+  # UI
+  cupertino_icons: ^1.0.6
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  build_runner: ^2.4.8
+  retrofit_generator: ^8.1.0
+  riverpod_generator: ^2.3.9
+  json_serializable: ^6.7.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
